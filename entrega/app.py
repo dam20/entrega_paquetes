@@ -1,120 +1,145 @@
-import tkinter as tk
-import threading
-import json
+import sys
 import requests
+import json
 import time
+import threading
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout,
+    QHBoxLayout, QLabel, QFrame
+)
+from PySide6.QtCore import (
+    QObject, QThread, Signal, Slot, Qt
+)
 from websocket import WebSocketApp
-import queue
 
 SERVER_URL = "http://localhost:8000"
 WS_URL = "ws://localhost:8000/ws"
 
-class EntregaApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Entrega - Paquetes Pendientes")
-        self.frame = tk.Frame(root, padx=20, pady=20)
-        self.frame.pack()
+# --- Clase del Trabajador para el WebSocket (QThread) ---
+class WsWorker(QObject):
+    pedido_recibido = Signal(dict)
+
+    def __init__(self, ws_url):
+        super().__init__()
+        self.ws_url = ws_url
+        self.ws = None
+
+    @Slot()
+    def run_forever(self):
+        print("Iniciando hilo de WebSocket...")
+        while True:
+            try:
+                self.ws = WebSocketApp(self.ws_url, on_message=self.on_message, on_close=self.on_close)
+                self.ws.run_forever()
+            except Exception as e:
+                print(f"⚠️ WS desconectado: {e}. Reintentando en 5 segundos...")
+                time.sleep(5)
+
+    def on_message(self, ws, message):
+        try:
+            data = json.loads(message)
+            self.pedido_recibido.emit(data)
+        except Exception as e:
+            print(f"❌ Error procesando mensaje WebSocket: {e}")
+
+    def on_close(self, ws, close_status_code, close_msg):
+        print(f"WS cerrado con estado {close_status_code}: {close_msg}")
+
+
+# --- Clase Principal de la Aplicación (UI) ---
+class EntregaApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Entrega - Paquetes Pendientes")
+        self.setGeometry(100, 100, 500, 600)
+
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.layout = QVBoxLayout(self.central_widget)
+        self.layout.setSpacing(10)
+        self.layout.setContentsMargins(10, 10, 10, 10)
+
         self.pedidos = {}
         self.widgets = {}
-        self.cola_mensajes = queue.Queue()
 
         self.cargar_existentes()
+
+        self.ws_thread = QThread()
+        self.ws_worker = WsWorker(WS_URL)
+        self.ws_worker.moveToThread(self.ws_thread)
+
+        self.ws_worker.pedido_recibido.connect(self.handle_nuevo_pedido)
+        self.ws_thread.started.connect(self.ws_worker.run_forever)
+        self.ws_thread.start()
+        
         self.actualizar_ui_inteligentemente()
 
-        threading.Thread(target=self.listen_ws, daemon=True).start()
-        self.root.after(100, self.process_messages)
+    @Slot(dict)
+    def handle_nuevo_pedido(self, data):
+        pieza = data["pieza"]
+        guarda = data["guarda"]
+        estado = data.get("estado", "Pedido al Deposito")
 
-    def process_messages(self):
-        cambios = False
-        while not self.cola_mensajes.empty():
-            data = self.cola_mensajes.get()
-            pieza = data["pieza"]
-            guarda = data["guarda"]
-            estado = data.get("estado", "Pedido al Deposito")
-
-            if pieza not in self.pedidos or self.pedidos[pieza]["estado"] != estado:
-                 self.pedidos[pieza] = {
-                    "estado": estado,
-                    "datos": {"pieza": pieza, "guarda": guarda}
-                }
-                 cambios = True
-
-        if cambios:
+        if pieza not in self.pedidos or self.pedidos[pieza]["estado"] != estado:
+            self.pedidos[pieza] = {
+                "estado": estado,
+                "datos": {"pieza": pieza, "guarda": guarda}
+            }
             self.actualizar_ui_inteligentemente()
-
-        self.root.after(100, self.process_messages)
 
     def actualizar_ui_inteligentemente(self):
         visibles = {p: i for p, i in self.pedidos.items() if i["estado"] == "Listo para ser Entregado"}
 
         widgets_a_eliminar = set(self.widgets.keys()) - set(visibles.keys())
         for pieza in widgets_a_eliminar:
-            self.widgets[pieza].destroy()
+            self.widgets[pieza].deleteLater()
             del self.widgets[pieza]
 
-        row = 0
         for pieza, info in visibles.items():
-            btn_frame = self.widgets.get(pieza)
-
-            if not btn_frame:
+            if pieza not in self.widgets:
                 datos = info["datos"]
                 pieza_str = datos["pieza"]
                 guarda_str = datos["guarda"]
                 
-                btn_frame = tk.Frame(self.frame, bg="#2ecc71", padx=10, pady=10)
-                self.widgets[pieza] = btn_frame
+                widget = QFrame()
+                widget.setStyleSheet("background-color: #2ecc71; border-radius: 5px;")
+                widget_layout = QHBoxLayout(widget)
 
-                pieza_label = tk.Frame(btn_frame, bg="#2ecc71")
-                pieza_label.pack(side="left")
-                tk.Label(pieza_label, text=pieza_str[:2], font=("Arial", 14, "bold"), bg="#2ecc71").pack(side="left")
-                tk.Label(pieza_label, text=pieza_str[2:-5], font=("Arial", 10), bg="#2ecc71").pack(side="left")
-                tk.Label(pieza_label, text=pieza_str[-5:-2], font=("Arial", 20, "bold"), bg="#2ecc71").pack(side="left")
+                pieza_label_full = QWidget()
+                pieza_label_full_layout = QHBoxLayout(pieza_label_full)
+                pieza_label_full_layout.setContentsMargins(0, 0, 0, 0)
+                pieza_label_full_layout.addWidget(QLabel(f'<span style="font-size:14pt; font-weight:bold;">{pieza_str[:2]}</span>'))
+                pieza_label_full_layout.addWidget(QLabel(f'<span style="font-size:10pt;">{pieza_str[2:-5]}</span>'))
+                pieza_label_full_layout.addWidget(QLabel(f'<span style="font-size:20pt; font-weight:bold;">{pieza_str[-5:-2]}</span>'))
+                
+                guarda_label = QLabel(f'<span style="font-size:24pt; font-weight:bold;">{guarda_str}</span>')
+                
+                widget_layout.addWidget(pieza_label_full)
+                widget_layout.addStretch()
+                widget_layout.addWidget(guarda_label)
 
-                tk.Label(btn_frame, text=" ", bg="#2ecc71", width=2).pack(side="left")
-                tk.Label(btn_frame, text=guarda_str, font=("Arial", 24, "bold"), bg="#2ecc71", width=3).pack(side="left")
+                widget.mousePressEvent = lambda event, p=pieza: self.marcar(p, event)
+                for child in widget_layout.children():
+                    child.mousePressEvent = lambda event, p=pieza: self.marcar(p, event)
 
-                self.bind_click(btn_frame, pieza)
-                for child in btn_frame.winfo_children():
-                    self.bind_click(child, pieza)
-            
-            btn_frame.grid(row=row, column=0, padx=5, pady=5, sticky="w")
-            row += 1
-
-    def bind_click(self, widget, pieza):
-        widget.bind("<Button-1>", lambda e: self.marcar(pieza, e))
+                self.widgets[pieza] = widget
+                self.layout.addWidget(widget)
 
     def marcar(self, pieza, event):
-        shift = event.state & 0x0001 != 0
+        shift = event.modifiers() & Qt.KeyboardModifier.ShiftModifier
         nuevo_estado = "No Entregado" if shift else "Entregado al Cliente"
 
         self.pedidos[pieza]["estado"] = nuevo_estado
         print(f"📦 Paquete {pieza} → {nuevo_estado}")
         self.actualizar_ui_inteligentemente()
 
-        def enviar():
-            try:
-                requests.put(f"{SERVER_URL}/pedido/{pieza}", json={"estado": nuevo_estado}, timeout=5)
-            except Exception as e:
-                print(f"❌ Error al actualizar estado en servidor: {e}")
+        threading.Thread(target=self._enviar_actualizacion, args=(pieza, nuevo_estado), daemon=True).start()
 
-        threading.Thread(target=enviar, daemon=True).start()
-
-    def listen_ws(self):
-        def on_message(ws, message):
-            try:
-                data = json.loads(message)
-                self.cola_mensajes.put(data)
-            except Exception as e:
-                print(f"❌ Error procesando mensaje WebSocket: {e}")
-
-        while True:
-            try:
-                ws = WebSocketApp(WS_URL, on_message=on_message)
-                ws.run_forever()
-            except Exception as e:
-                print(f"⚠️ WS desconectado: {e}")
-                time.sleep(5)
+    def _enviar_actualizacion(self, pieza, nuevo_estado):
+        try:
+            requests.put(f"{SERVER_URL}/pedido/{pieza}", json={"estado": nuevo_estado}, timeout=5)
+        except Exception as e:
+            print(f"❌ Error al actualizar estado en servidor: {e}")
 
     def cargar_existentes(self):
         try:
@@ -133,6 +158,7 @@ class EntregaApp:
             print(f"❌ Error al cargar pedidos existentes: {e}")
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = EntregaApp(root)
-    root.mainloop()
+    app = QApplication(sys.argv)
+    window = EntregaApp()
+    window.show()
+    sys.exit(app.exec())
