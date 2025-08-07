@@ -68,3 +68,19 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()  # No esperamos mensajes, solo mantenemos abierto
     except:
         conexiones.remove(websocket)
+
+from fastapi.responses import JSONResponse
+
+@app.get("/pedidos")
+async def obtener_pedidos():
+    try:
+        conn = sqlite3.connect("database.db")
+        c = conn.cursor()
+        c.execute("SELECT pieza, guarda FROM pedidos WHERE estado = 'nuevo'")
+        rows = c.fetchall()
+        conn.close()
+
+        pedidos = [{"pieza": row[0], "guarda": row[1]} for row in rows]
+        return JSONResponse(content=pedidos)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
