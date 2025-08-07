@@ -37,6 +37,10 @@ class Pedido(BaseModel):
     pieza: str
     guarda: str
 
+class EstadoUpdate(BaseModel):
+    estado: str
+
+
 # Lista de conexiones WebSocket
 conexiones: List[WebSocket] = []
 
@@ -84,3 +88,39 @@ async def obtener_pedidos():
         return JSONResponse(content=pedidos)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.put("/pedido/{pieza}")
+async def actualizar_estado(pieza: str, estado_update: EstadoUpdate):
+    nuevo_estado = estado_update.estado.lower()
+    if nuevo_estado not in ["listo", "devuelto"]:
+        return JSONResponse(status_code=400, content={"error": "Estado inválido"})
+
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("UPDATE pedidos SET estado = ? WHERE pieza = ?", (nuevo_estado, pieza))
+    conn.commit()
+
+    # Obtener la guarda para enviar por WebSocket
+    c.execute("SELECT guarda FROM pedidos WHERE pieza = ?", (pieza,))
+    row = c.fetchone()
+    conn.close()
+
+    if not row:
+        return JSONResponse(status_code=404, content={"error": "Pieza no encontrada"})
+
+    guarda = row[0]
+
+    # Notificar a todos los clientes WebSocket conectados
+    for ws in conexiones:
+        try:
+            await ws.send_json({
+                "pieza": pieza,
+                "guarda": guarda,
+                "estado": nuevo_estado
+            })
+        except:
+            # Si falla, eliminamos la conexión muerta
+            conexiones.remove(ws)
+
+    return {"status": "ok", "pieza": pieza, "nuevo_estado": nuevo_estado}
