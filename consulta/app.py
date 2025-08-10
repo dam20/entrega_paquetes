@@ -125,7 +125,7 @@ def main():
 
                 if len(campos) >= 13:
                     pieza = campos[0][2]
-                    guarda = campos[12][2]
+                    guarda = campos[11][2]
                     enviar_datos(pieza, guarda, server_url)
                 else:
                     print("❌ No se detectaron suficientes campos.")

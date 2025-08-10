@@ -1,5 +1,8 @@
 import sys
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QHBoxLayout, 
+    QLabel, QFrame, QSizePolicy
+)
 from PySide6.QtCore import Slot, Qt
 import threading
 import requests
@@ -7,7 +10,7 @@ from common import BaseApp, SERVER_URL
 
 class EntregaApp(BaseApp):
     def __init__(self):
-        super().__init__("Entrega")
+        super().__init__("Entrega", show_guarda=False)
 
     @Slot(dict)
     def handle_nuevo_pedido(self, data):
@@ -40,22 +43,50 @@ class EntregaApp(BaseApp):
                     "#2ecc71"
                 )
 
+                widget.mouseDoubleClickEvent = lambda event, p=pieza: self.marcar(p, event)
                 widget.mousePressEvent = lambda event, p=pieza: self.marcar(p, event)
                 for child in widget_layout.children():
+                    child.mouseDoubleClickEvent = lambda event, p=pieza: self.marcar(p, event)
                     child.mousePressEvent = lambda event, p=pieza: self.marcar(p, event)
 
                 self.widgets[pieza] = widget
                 self.layout.addWidget(widget)
+        
+        # Aseguramos que haya un único stretch al final
+        for i in range(self.layout.count()):
+            item = self.layout.itemAt(i)
+            if item is not None and item.spacerItem() is not None:
+                self.layout.removeItem(item)
+        self.layout.addStretch()
+
+    def copiar_al_portapapeles(self, pieza):
+        QApplication.clipboard().setText(pieza)
+        print(f"📋 Número de pieza {pieza} copiado al portapapeles")
 
     def marcar(self, pieza, event):
-        shift = event.modifiers() & Qt.KeyboardModifier.ShiftModifier
-        nuevo_estado = "No Entregado" if shift else "Entregado al Cliente"
+        # Manejar Shift + Clic
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            nuevo_estado = "No Entregado"
+            self.pedidos[pieza]["estado"] = nuevo_estado
+            print(f"📦 Paquete {pieza} → {nuevo_estado}")
+            self.actualizar_ui_inteligentemente()
+            threading.Thread(target=self._enviar_actualizacion, args=(pieza, nuevo_estado), daemon=True).start()
+            return
 
-        self.pedidos[pieza]["estado"] = nuevo_estado
-        print(f"📦 Paquete {pieza} → {nuevo_estado}")
-        self.actualizar_ui_inteligentemente()
+        # Manejar clic simple (copiar al portapapeles)
+        if event.type() == event.Type.MouseButtonPress and not hasattr(event, '_double_click'):
+            self.copiar_al_portapapeles(pieza)
+            # Iniciar temporizador para detectar doble clic
+            QApplication.instance().processEvents()
+            return
 
-        threading.Thread(target=self._enviar_actualizacion, args=(pieza, nuevo_estado), daemon=True).start()
+        # Manejar doble clic (marcar como entregado)
+        if event.type() == event.Type.MouseButtonDblClick:
+            nuevo_estado = "Entregado al Cliente"
+            self.pedidos[pieza]["estado"] = nuevo_estado
+            print(f"📦 Paquete {pieza} → {nuevo_estado}")
+            self.actualizar_ui_inteligentemente()
+            threading.Thread(target=self._enviar_actualizacion, args=(pieza, nuevo_estado), daemon=True).start()
 
     def cargar_existentes(self):
         try:

@@ -11,11 +11,10 @@
 ## Cliente PC1 (Consulta)
 
 1. Instalar dependencias:
-   pip install pytesseract pyautogui pillow keyboard requests
+   pip install -r requirements.txt
 2. Instalar Tesseract OCR:
-   Ejecutar `install_tesseract.bat` o instalarlo manualmente, agregar el directorio al PATH
-3. Calibrar zonas:
-   python app.py --calibrate
+   Ejecutar `install_tesseract.bat` o instalarlo manualmente, instalar el language data para spanish, agregar el directorio al PATH
+   https://github.com/UB-Mannheim/tesseract/wiki
 4. Ejecutar app normalmente:
    python app.py
-5. Presionar F9 luego de ingresar una pieza → se envía al servidor
+5. Presionar F4 luego de ingresar una pieza → se envía al servidor

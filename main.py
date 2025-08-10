@@ -1,5 +1,6 @@
 import sys
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel
+from PySide6.QtCore import Qt
 from deposito.app import DepositoApp
 from entrega.app import EntregaApp
 
@@ -7,7 +8,14 @@ class SectorSelector(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Selección de Sector")
-        self.setGeometry(300, 300, 300, 150)
+        self.setFixedSize(300, 150)
+        
+        # Centrar la ventana en la pantalla
+        screen = QApplication.primaryScreen().geometry()
+        self.move(
+            (screen.width() - self.width()) // 2,
+            (screen.height() - self.height()) // 2
+        )
         
         layout = QVBoxLayout()
         

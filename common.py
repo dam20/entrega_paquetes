@@ -49,19 +49,28 @@ class WsWorker(QObject):
         print(f"WS cerrado con estado {close_status_code}: {close_msg}")
 
 class BaseApp(QMainWindow):
-    def __init__(self, titulo):
+    def __init__(self, titulo, show_guarda=True):
+        """
+        Inicializa la aplicación base.
+        
+        Args:
+            titulo (str): Título de la ventana
+            show_guarda (bool): Indica si se debe mostrar el número de guarda
+        """
         super().__init__()
         self.setWindowTitle(titulo)
+        self.show_guarda = show_guarda  # Configura la visibilidad del número de guarda
         
-        # Obtenemos la resolución de la pantalla
-        screen = QApplication.primaryScreen().geometry()
-        screen_width = screen.width()
-        screen_height = screen.height()
-
-        # Calculamos dimensiones basadas en la resolución
-        window_width = min(280, int(screen_width * 0.35))  # 35% del ancho o 280px, lo que sea menor
-        window_height = min(int(screen_height * 0.9), screen_height - 50)  # 90% del alto o altura-50px
-        font_scale = min(1.0, screen_width / 1024)  # Factor de escala para fuentes
+        # Obtenemos la resolución de la pantalla y el espacio disponible
+        screen = QApplication.primaryScreen()
+        screen_geometry = screen.geometry()
+        available_geometry = screen.availableGeometry()
+        
+        # Calculamos dimensiones considerando la barra de título (23px)
+        title_bar_height = 32  # Altura típica de la barra de título en Windows
+        window_width = min(230, int(screen_geometry.width() * 0.25))  # 25% del ancho o 230px
+        window_height = available_geometry.height() - title_bar_height  # Altura disponible menos barra de título
+        font_scale = min(1.0, screen_geometry.width() / 1024)  # Factor de escala para fuentes
 
         # Guardamos el factor de escala para usarlo en crear_widget_pedido
         self.font_scale = font_scale
@@ -103,27 +112,33 @@ class BaseApp(QMainWindow):
         # Contenedor para los widgets de pedidos
         content_widget = QWidget()
         self.layout = QVBoxLayout(content_widget)
-        spacing = max(2, int(5 * font_scale))
+        spacing = max(2, int(3 * font_scale))  # Reducido de 5 a 3
         self.layout.setSpacing(spacing)
-        margins = max(3, int(5 * font_scale))
+        margins = max(2, int(3 * font_scale))  # Reducido de 5 a 3
         self.layout.setContentsMargins(margins, margins, margins, margins)
-        self.layout.addStretch()
 
         # Configuramos el área de desplazamiento
         scroll_area.setWidget(content_widget)
         main_layout.addWidget(scroll_area)
         
-        # Deshabilitamos la maximización y ajustamos el tamaño
+        # Configuramos las flags de la ventana
         self.setWindowFlags(
             Qt.WindowType.Window |
             Qt.WindowType.CustomizeWindowHint |
             Qt.WindowType.WindowCloseButtonHint |
-            Qt.WindowType.WindowMinimizeButtonHint
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowStaysOnTopHint  # Mantener siempre visible
         )
         
         # Establecemos el tamaño de la ventana
         self.setFixedWidth(window_width)
-        self.setFixedHeight(window_height)
+        self.setFixedHeight(window_height)  # Altura ajustada considerando la barra de título
+        
+        # Posicionamos la ventana en el borde derecho
+        self.move(
+            available_geometry.right() - window_width,  # Pegado al borde derecho
+            available_geometry.top()  # Alineado con el borde superior del área disponible
+        )
         
         self.pedidos = {}
         self.widgets = {}
@@ -142,14 +157,15 @@ class BaseApp(QMainWindow):
 
     def crear_widget_pedido(self, pieza_str, guarda_str, color):
         # Calculamos tamaños basados en el factor de escala
-        widget_height = int(60 * self.font_scale)
+        widget_height = int(60 * self.font_scale)  # Reducido de 80 a 60
         tipo_size = int(13 * self.font_scale)
         medio_size = int(10 * self.font_scale)
         final_size = int(18 * self.font_scale)
         guarda_size = int(20 * self.font_scale)
         border_radius = int(5 * self.font_scale)
-        margins = int(8 * self.font_scale)
-        spacing = int(10 * self.font_scale)
+        margins = int(5 * self.font_scale)  # Reducido de 8 a 5
+        # Hacemos que el espaciado sea relativo al tamaño de la fuente de guarda
+        spacing = int(guarda_size * 0.15)  # Reducido de 0.25 a 0.15
 
         widget = QFrame()
         widget.setFixedHeight(max(40, widget_height))
@@ -165,45 +181,83 @@ class BaseApp(QMainWindow):
         widget_layout.setContentsMargins(margins, 0, margins, 0)
         widget_layout.setSpacing(spacing)
 
-        # Panel izquierdo (código de pieza)
+        # Panel de código de pieza
         pieza_label_full = QWidget()
         pieza_label_full_layout = QHBoxLayout(pieza_label_full)
         pieza_label_full_layout.setContentsMargins(0, 0, 0, 0)
-        pieza_label_full_layout.setSpacing(int(2 * self.font_scale))
+        
+        if not self.show_guarda:
+            # Aumentamos los tamaños cuando no hay número de guarda
+            tipo_size = int(15 * self.font_scale)
+            medio_size = int(12 * self.font_scale)
+            final_size = int(22 * self.font_scale)
+            pieza_label_full_layout.setSpacing(int(4 * self.font_scale))
+        else:
+            pieza_label_full_layout.setSpacing(int(2 * self.font_scale))
 
         # Tipo (2 letras)
         tipo = QLabel(f'<span style="font-size:{tipo_size}pt; font-weight:bold;">{pieza_str[:2]}</span>')
         tipo.setMinimumWidth(int(25 * self.font_scale))
+        tipo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Número central
         medio = QLabel(f'<span style="font-size:{medio_size}pt;">{pieza_str[2:-5]}</span>')
+        medio.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Últimos 3 dígitos
         final = QLabel(f'<span style="font-size:{final_size}pt; font-weight:bold;">{pieza_str[-5:-2]}</span>')
         final.setMinimumWidth(int(45 * self.font_scale))
+        final.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        # Agregamos un stretch al inicio y al final para centrar todo
+        if not self.show_guarda:
+            pieza_label_full_layout.addStretch(1)
+        
         pieza_label_full_layout.addWidget(tipo)
         pieza_label_full_layout.addWidget(medio)
         pieza_label_full_layout.addWidget(final)
         pieza_label_full_layout.addStretch(1)
 
-        # Número de guarda
-        guarda_label = QLabel(f'<span style="font-size:{guarda_size}pt; font-weight:bold;">{guarda_str}</span>')
-        guarda_label.setFixedWidth(int(50 * self.font_scale))
-        guarda_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        # Número de guarda (con borde)
+        guarda_container = QWidget()  # Contenedor sin borde
+        guarda_container_layout = QHBoxLayout(guarda_container)
+        guarda_container_layout.setContentsMargins(0, 0, 0, 0)
+        guarda_container_layout.setSpacing(0)
         
-        # Agregamos los widgets al layout
+        guarda_label = QLabel(f'<span style="font-size:{guarda_size}pt; font-weight:bold;">{guarda_str}</span>')
+        # Ajustamos el ancho para números de 3 dígitos
+        label_width = int(60 * self.font_scale)  # Reducido de 70 a 60
+        guarda_label.setFixedWidth(label_width)
+        guarda_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Aplicar el borde y fondo directamente al QLabel
+        border_width = max(2, int(2 * self.font_scale))  # Reducido de 2.5 a 2
+        padding = int(4 * self.font_scale)  # Reducido de 6 a 4
+        guarda_label.setStyleSheet(f"""
+            QLabel {{
+                border: {border_width}px solid #000000;
+                border-radius: {int(3 * self.font_scale)}px;
+                background-color: rgba(255, 255, 255, 0.1);
+                padding-left: {padding}px;
+                padding-right: {padding}px;
+            }}
+        """)
+        
+        guarda_container_layout.addWidget(guarda_label)
+        
+        # Agregamos los widgets al layout según la configuración
         widget_layout.addWidget(pieza_label_full)
-        widget_layout.addWidget(guarda_label)
+        if self.show_guarda:
+            widget_layout.addWidget(guarda_container)
+            widget_layout.setSpacing(spacing)  # Aplicamos el espaciado solo si hay número de guarda
+        else:
+            widget_layout.setSpacing(0)  # Sin espaciado cuando solo hay número de pieza
 
         # Configuramos el widget para que tome el tamaño mínimo necesario
         widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
         return widget, widget_layout
 
-        return widget, widget_layout
-
-        return widget, widget_layout
 
     def _enviar_actualizacion(self, pieza, nuevo_estado):
         try:
