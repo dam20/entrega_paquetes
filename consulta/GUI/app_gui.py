@@ -249,8 +249,8 @@ class ConfirmationWindow(QWidget):
         """Maneja los eventos de teclado"""
         if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
             self.confirm_data()
-        #elif event.key() == Qt.Key_Escape:
-         #   self.close()
+        elif event.key() == Qt.Key_Escape:
+            self.close()
         super().keyPressEvent(event)
 
     def show_data(self, datos: DatosPaquete):
@@ -332,11 +332,12 @@ class KeyboardWorker(QThread):
 class ConsultaApp(QObject):
     """Clase principal de la aplicación con interfaz gráfica"""
     
-    def __init__(self, server_url: str):
+    def __init__(self, server_url: str, config_service=None):
         super().__init__()
         self.window_detector = WindowDetector()
         self.field_extractor = FieldExtractor()
         self.server = ServerCommunicator(server_url)
+        self.config_service = config_service
         
         # Interfaz gráfica
         self.app = QApplication.instance()
@@ -384,6 +385,12 @@ class ConsultaApp(QObject):
         show_action = tray_menu.addAction("📊 Estado")
         show_action.triggered.connect(self.show_log)
         
+        # Agregar opción para reconfigurar servidor si tenemos el servicio
+        if self.config_service:
+            tray_menu.addSeparator()
+            config_action = tray_menu.addAction("⚙️ Configurar Servidor")
+            config_action.triggered.connect(self.show_configuration_dialog)
+        
         tray_menu.addSeparator()
         
         quit_action = tray_menu.addAction("❌ Salir")
@@ -396,6 +403,25 @@ class ConsultaApp(QObject):
         self.tray_icon.activated.connect(self.tray_icon_activated)
         
         return True
+    
+    def show_configuration_dialog(self):
+        """Muestra el diálogo de configuración del servidor"""
+        if self.config_service and self.config_service.show_configuration_dialog():
+            # Configuración actualizada, reiniciar el servidor comunicador
+            server_url, _ = self.config_service.get_server_urls()
+            if server_url:
+                if not server_url.endswith('/'):
+                    server_url += '/'
+                server_url += 'pedido'
+                self.server = ServerCommunicator(server_url)
+                print(f"🔄 Configuración actualizada: {server_url}")
+                
+                # Mostrar mensaje de confirmación
+                msg = QMessageBox()
+                msg.setWindowTitle("Configuración Actualizada")
+                msg.setText(f"✅ Nueva configuración guardada:\n{server_url}")
+                msg.setIcon(QMessageBox.Information)
+                msg.exec()
     
     def tray_icon_activated(self, reason):
         """Maneja la activación del icono del tray"""
@@ -518,16 +544,33 @@ class ConsultaApp(QObject):
         self.quit_application()
 
 def main():
-    from config import ConfigManager
+    # Inicializar QApplication tempormente para el diálogo de configuración
+    temp_app = QApplication.instance()
+    if temp_app is None:
+        temp_app = QApplication(sys.argv)
     
-    config = ConfigManager()
-    server_url = config.get_server_url()
+    from configuration_service import ConfigurationService
+    
+    config_service = ConfigurationService()
+    
+    # Asegurar que la aplicación esté configurada
+    if not config_service.ensure_configuration():
+        print("❌ Configuración cancelada por el usuario")
+        return 1
+    
+    # Obtener la URL del servidor
+    server_url, _ = config_service.get_server_urls()
     
     if server_url is None:
-        print("No se encontró configuración del servidor.")
-        server_url = config.request_server_url()
+        print("❌ Error: No se pudo obtener la configuración del servidor")
+        return 1
     
-    app = ConsultaApp(server_url)
+    # Ajustar la URL para incluir el endpoint /pedido
+    if not server_url.endswith('/'):
+        server_url += '/'
+    server_url += 'pedido'
+    
+    app = ConsultaApp(server_url, config_service)
     sys.exit(app.run())
 
 if __name__ == "__main__":

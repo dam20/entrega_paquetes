@@ -1,89 +1,131 @@
 import json
 import os
-from typing import Optional
+from typing import Optional, Tuple
+from dataclasses import dataclass
 
-class ConfigManager:
-    """Gestor de configuración de la aplicación"""
-    def __init__(self, config_file: str = "config.json"):
-        self.config_file = config_file
-        self.config = self._load_config()
 
-    def _load_config(self) -> dict:
+@dataclass
+class ServerConfig:
+    """Configuración del servidor"""
+    ip: str
+    port: int
+    
+    @property
+    def server_url(self) -> str:
+        """URL del servidor HTTP"""
+        return f"http://{self.ip}:{self.port}/"
+    
+    @property
+    def websocket_url(self) -> str:
+        """URL del WebSocket"""
+        return f"ws://{self.ip}:{self.port}/ws"
+
+
+class ConfigurationManager:
+    """Gestor de configuración de la aplicación siguiendo el patrón Singleton"""
+    
+    _instance = None
+    _config = None
+    
+    def __new__(cls, config_file: str = "config.json"):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._config_file = config_file
+            cls._instance._load_configuration()
+        return cls._instance
+
+    def _load_configuration(self) -> None:
         """Carga la configuración desde el archivo"""
-        if os.path.exists(self.config_file):
+        if os.path.exists(self._config_file):
             try:
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except Exception as e:
+                with open(self._config_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self._config = ServerConfig(
+                        ip=data.get('ip', 'localhost'),
+                        port=data.get('puerto', 8000)
+                    )
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
                 print(f"Error al leer el archivo de configuración: {e}")
-                return {}
-        return {}
+                self._config = None
+        else:
+            self._config = None
 
-    def save_config(self) -> None:
-        """Guarda la configuración actual en el archivo"""
+    def save_configuration(self, server_config: ServerConfig) -> bool:
+        """Guarda la configuración en el archivo"""
         try:
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, indent=4)
+            config_data = {
+                'ip': server_config.ip,
+                'puerto': server_config.port
+            }
+            
+            with open(self._config_file, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=4, ensure_ascii=False)
+            
+            self._config = server_config
+            return True
+            
         except Exception as e:
             print(f"Error al guardar la configuración: {e}")
+            return False
 
-    def _parse_url(self, url: str) -> tuple[str, int]:
-        """Extrae la IP y el puerto de una URL"""
+    def is_configured(self) -> bool:
+        """Verifica si la aplicación está configurada"""
+        return self._config is not None
+
+    def get_server_config(self) -> Optional[ServerConfig]:
+        """Obtiene la configuración del servidor"""
+        return self._config
+
+    def get_server_url(self) -> Optional[str]:
+        """Obtiene la URL del servidor"""
+        return self._config.server_url if self._config else None
+    
+    def get_websocket_url(self) -> Optional[str]:
+        """Obtiene la URL del WebSocket"""
+        return self._config.websocket_url if self._config else None
+
+    def update_configuration(self, ip: str, port: int) -> bool:
+        """Actualiza la configuración con nuevos valores"""
+        server_config = ServerConfig(ip=ip, port=port)
+        return self.save_configuration(server_config)
+
+    def reset_configuration(self) -> None:
+        """Resetea la configuración"""
+        if os.path.exists(self._config_file):
+            try:
+                os.remove(self._config_file)
+                self._config = None
+            except Exception as e:
+                print(f"Error al eliminar el archivo de configuración: {e}")
+
+
+# Clase de compatibilidad con el código existente
+class ConfigManager(ConfigurationManager):
+    """Clase de compatibilidad para mantener la API existente"""
+    
+    def __init__(self, config_file: str = "config.json"):
+        super().__init__(config_file)
+
+    def get_server_port(self) -> int:
+        """Obtiene el puerto del servidor (compatibilidad)"""
+        return self._config.port if self._config else 8000
+
+    def get_server_ip(self) -> str:
+        """Obtiene la IP del servidor (compatibilidad)"""
+        return self._config.ip if self._config else 'localhost'
+
+    def set_server_url(self, url: str) -> None:
+        """Establece la URL del servidor (compatibilidad)"""
+        ip, port = self._parse_url(url)
+        self.update_configuration(ip, port)
+
+    def _parse_url(self, url: str) -> Tuple[str, int]:
+        """Extrae la IP y el puerto de una URL (compatibilidad)"""
         try:
-            # Elimina 'http://' y '/pedido' si existen
-            url = url.replace('http://', '').replace('/pedido', '')
-            # Separa IP y puerto
+            url = url.replace('http://', '')
+            if '/' in url:
+                url = url.split('/')[0]
             ip, port_str = url.split(':')
             return ip, int(port_str)
         except:
             return 'localhost', 8000
-
-    def get_server_url(self) -> Optional[str]:
-        """Obtiene la URL del servidor desde la configuración"""
-        if 'ip' in self.config and 'puerto' in self.config:
-            return f"http://{self.config['ip']}:{self.config['puerto']}/pedido"
-        return None
-
-    def set_server_url(self, url: str) -> None:
-        """Establece la URL del servidor en la configuración"""
-        ip, puerto = self._parse_url(url)
-        self.config['ip'] = ip
-        self.config['puerto'] = puerto
-        self.save_config()
-
-    def get_server_ip(self) -> str:
-        """Obtiene la IP del servidor"""
-        return self.config.get('ip', 'localhost')
-
-    def get_server_port(self) -> int:
-        """Obtiene el puerto del servidor"""
-        return self.config.get('puerto', 8000)
-
-    def request_server_url(self) -> str:
-        """Solicita al usuario la IP y puerto del servidor"""
-        while True:
-            print("\nConfiguración del servidor")
-            print("-------------------------")
-            ip = input("Ingrese la IP del servidor (ej: localhost o 192.168.1.100): ").strip()
-            if not ip:
-                print("La IP no puede estar vacía. Por favor, intente nuevamente.")
-                continue
-
-            try:
-                puerto = input("Ingrese el puerto del servidor (ej: 8000): ").strip()
-                if not puerto:
-                    print("El puerto no puede estar vacío. Por favor, intente nuevamente.")
-                    continue
-                
-                puerto = int(puerto)
-                if puerto < 1 or puerto > 65535:
-                    print("El puerto debe estar entre 1 y 65535.")
-                    continue
-
-                url = f"http://{ip}:{puerto}/pedido"
-                self.set_server_url(url)
-                return url
-
-            except ValueError:
-                print("El puerto debe ser un número válido.")
-                continue
