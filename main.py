@@ -1,10 +1,10 @@
 import sys
-from PySide6.QtWidgets import (
+from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton, 
     QLabel, QMessageBox, QHBoxLayout
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont
 from configuration_service import ConfigurationService
 
 
@@ -198,7 +198,7 @@ def main():
     try:
         selector = SectorSelector()
         selector.show()
-        sys.exit(app.exec())
+        sys.exit(app.exec_())
         
     except Exception as e:
         QMessageBox.critical(

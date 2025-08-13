@@ -1,6 +1,6 @@
 import sys
-from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Slot
+from PyQt5.QtWidgets import QApplication
+from PyQt5.QtCore import pyqtSlot
 import threading
 import requests
 from common import BaseApp
@@ -12,7 +12,7 @@ class DepositoApp(BaseApp):
     def __init__(self, server_url: str, ws_url: str):
         super().__init__("Depósito", server_url, ws_url, show_guarda=True)
 
-    @Slot(dict)
+    @pyqtSlot(dict)
     def handle_nuevo_pedido(self, data: dict) -> None:
         """Maneja nuevos pedidos recibidos vía WebSocket"""
         pieza = data.get("pieza")

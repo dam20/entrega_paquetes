@@ -18,3 +18,11 @@
 4. Ejecutar app normalmente:
    python app.py
 5. Presionar F4 luego de ingresar una pieza → se envía al servidor
+
+
+
+## Cliente entrega/deposito
+1. Para generar el ejecutable
+   pyinstaller main.py --onefile --add-data "common.py;." --add-data "config_dialog.py;." --add-data "config.py;." --add-data "configuration_service.py;." --add-data "deposito/app.py;deposito" --add-data "entrega/app.py;entrega"
+   #para que no abra la consola
+   pyinstaller main.py --onefile --windowed --add-data "common.py;." --add-data "config_dialog.py;." --add-data "config.py;." --add-data "configuration_service.py;." --add-data "deposito/app.py;deposito" --add-data "entrega/app.py;entrega"

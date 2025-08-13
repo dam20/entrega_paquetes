@@ -1,9 +1,10 @@
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+from PyQt5.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QMessageBox, QFormLayout
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont
+
 import requests
 from typing import Tuple, Optional
 
@@ -32,7 +33,7 @@ class ConfigurationDialog(QDialog):
         title_font.setPointSize(14)
         title_font.setBold(True)
         title_label.setFont(title_font)
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(title_label)
         
         # Formulario

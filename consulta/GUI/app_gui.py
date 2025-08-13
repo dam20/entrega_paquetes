@@ -16,11 +16,11 @@ import logging
 from threading import Thread, Event
 import signal
 
-from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                                QLabel, QLineEdit, QPushButton, QSystemTrayIcon, 
                                QMenu, QMessageBox)
-from PySide6.QtCore import Qt, QTimer, Signal, QObject, QThread
-from PySide6.QtGui import QFont, QIcon, QPixmap
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject, QThread
+from PyQt5.QtGui import QFont, QIcon, QPixmap
 
 # Configuración de logging
 logging.basicConfig(
@@ -133,7 +133,7 @@ class ServerCommunicator:
 class ConfirmationWindow(QWidget):
     """Ventana de confirmación para mostrar los datos capturados"""
     
-    data_confirmed = Signal(object)  # Señal emitida cuando se confirman los datos
+    data_confirmed = pyqtSignal(object)  # Señal emitida cuando se confirman los datos
     
     def __init__(self):
         super().__init__()
@@ -297,7 +297,7 @@ class ConfirmationWindow(QWidget):
 class KeyboardWorker(QThread):
     """Worker thread para manejar la captura de teclas"""
     
-    f4_pressed = Signal()
+    f4_pressed = pyqtSignal()
     
     def __init__(self):
         super().__init__()

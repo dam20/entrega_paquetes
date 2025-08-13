@@ -4,4 +4,4 @@ pytesseract
 requests
 Pillow
 keyboard
-PySide6
+PyQt5

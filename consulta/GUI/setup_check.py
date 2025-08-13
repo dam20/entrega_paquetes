@@ -53,7 +53,7 @@ def check_files() -> bool:
 def check_dependencies() -> Tuple[bool, List[str]]:
     """Verifica las dependencias de Python"""
     dependencies = [
-        ('PySide6', 'PySide6'),
+        ('PyQt5', 'PyQt5'),
         ('cv2', 'opencv-python'),
         ('numpy', 'numpy'),
         ('pytesseract', 'pytesseract'),

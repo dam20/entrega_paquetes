@@ -3,15 +3,12 @@ import requests
 import json
 import time
 import threading
-from PySide6.QtWidgets import (
+from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QFrame, QSizePolicy,
     QScrollArea, QMessageBox
 )
-from PySide6.QtCore import Qt
-from PySide6.QtCore import (
-    QObject, QThread, Signal, Slot, Qt
-)
+from PyQt5.QtCore import QObject, QThread, pyqtSignal as Signal, pyqtSlot as Slot, Qt
 from websocket import WebSocketApp
 from typing import Optional
 

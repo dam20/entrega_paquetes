@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget
+from PyQt5.QtWidgets import QWidget, QDialog  
 from typing import Optional, Tuple
 from config_dialog import ConfigurationDialog
 from config import ConfigurationManager, ServerConfig
@@ -37,10 +37,10 @@ class ConfigurationService:
             bool: True si se configuró correctamente, False si se canceló
         """
         dialog = ConfigurationDialog(parent)
-        
-        if dialog.exec() == dialog.DialogCode.Accepted:
+
+        if dialog.exec() == QDialog.Accepted:
             config_data = dialog.get_configuration()
-            
+
             if config_data:
                 ip, port = config_data
                 return self._config_manager.update_configuration(ip, port)

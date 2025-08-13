@@ -41,3 +41,9 @@ python service_wrapper.py install
 # Iniciar servicio
 python service_wrapper.py start
 La aplicación mantiene toda la funcionalidad original pero ahora con una interfaz moderna que permite al operador revisar y corregir los datos antes del envío, mejorando la precisión y control del proceso.
+
+# Generar ejecutable
+venv32\Scripts\activate
+pyinstaller run_app.py --onefile --add-data "config.py;." --add-data "app_gui.py;."
+# para que no abra la consola
+pyinstaller run_app.py --onefile --windowed  --add-data "config.py;." --add-data "app_gui.py;."
