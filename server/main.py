@@ -127,3 +127,7 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except:
         conexiones.remove(websocket)
+
+@app.get("/health")
+async def ping():
+    return JSONResponse(content={"message": "Prueba Exitosa!!!"}, status_code=200)
