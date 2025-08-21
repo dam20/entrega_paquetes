@@ -22,6 +22,9 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject, QThread
 from PyQt5.QtGui import QFont, QIcon, QPixmap
 
+# Importar la función de extracción mejorada
+from fieldExtractor import procesarImagen
+
 # Configuración de logging
 logging.basicConfig(
     filename='envios.log',
@@ -58,61 +61,6 @@ class DatosPaquete:
         pieza_limpia = re.sub(r'\W+$', '', self.pieza.replace(" ", "").upper())
         guarda_limpia = ''.join(filter(str.isdigit, self.guarda))
         return DatosPaquete(pieza_limpia, guarda_limpia)
-
-class ImageProcessor(ABC):
-    """Interfaz abstracta para el procesamiento de imágenes"""
-    @abstractmethod
-    def process(self, image: np.ndarray) -> Optional[np.ndarray]:
-        pass
-
-class WindowDetector(ImageProcessor):
-    """Detector de ventanas con borde gris"""
-    def __init__(self):
-        self.lower = np.array([150, 150, 150], dtype=np.uint8)
-        self.upper = np.array([170, 170, 170], dtype=np.uint8)
-        self.kernel = np.ones((3, 3), np.uint8)
-
-    def process(self, image: np.ndarray) -> Optional[np.ndarray]:
-        mask = cv2.inRange(image, self.lower, self.upper)
-        mask_clean = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel)
-        contours, _ = cv2.findContours(mask_clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        for cnt in contours:
-            approx = cv2.approxPolyDP(cnt, 0.02 * cv2.arcLength(cnt, True), True)
-            area = cv2.contourArea(cnt)
-            if len(approx) == 4 and area > 1000:
-                x, y, w, h = cv2.boundingRect(approx)
-                return image[y+2:y+h-2, x+2:x+w-2]
-        return None
-
-class FieldExtractor(ImageProcessor):
-    """Extractor de campos de texto de la imagen"""
-    def __init__(self):
-        self.target_white = self._hex_to_bgr('#FFFFFF')
-        self.tolerance = 5
-        self.lower_white = np.array([max(0, c-self.tolerance) for c in self.target_white])
-        self.upper_white = np.array([min(255, c+self.tolerance) for c in self.target_white])
-
-    def _hex_to_bgr(self, hex_color: str) -> Tuple[int, int, int]:
-        """Convierte un color hexadecimal a BGR"""
-        hex_color = hex_color.lstrip('#')
-        values = [int(hex_color[i:i+2], 16) for i in (4, 2, 0)]
-        return (values[0], values[1], values[2])
-
-    def process(self, image: np.ndarray) -> List[CampoTexto]:
-        mask_white = cv2.inRange(image, self.lower_white, self.upper_white)
-        contornos, _ = cv2.findContours(mask_white, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        resultados = []
-
-        for c in contornos:
-            x, y, w, h = cv2.boundingRect(c)
-            if w > 30 and h > 10:
-                campo = image[y:y+h, x:x+w]
-                texto = pytesseract.image_to_string(campo, config='--psm 7').strip()
-                if texto:
-                    resultados.append(CampoTexto(y, x, texto))
-
-        return sorted(resultados, key=lambda x: (x.y, x.x))
 
 class ServerCommunicator:
     """Clase para manejar la comunicación con el servidor"""
@@ -320,7 +268,7 @@ class KeyboardWorker(QThread):
                         
                 time.sleep(0.1)  # Reducir uso de CPU
             except Exception as e:
-                print(f"⚠️  Error en detección de teclas: {e}")
+                print(f"⚠️ Error en detección de teclas: {e}")
                 time.sleep(1)  # Pausa más larga en caso de error
 
     def stop(self):
@@ -334,8 +282,6 @@ class ConsultaApp(QObject):
     
     def __init__(self, server_url: str, config_service=None):
         super().__init__()
-        self.window_detector = WindowDetector()
-        self.field_extractor = FieldExtractor()
         self.server = ServerCommunicator(server_url)
         self.config_service = config_service
         
@@ -353,13 +299,13 @@ class ConsultaApp(QObject):
         
         # System tray
         if not self.setup_system_tray():
-            print("⚠️  Sistema sin soporte para bandeja del sistema")
+            print("⚠️ Sistema sin soporte para bandeja del sistema")
             # Si no hay system tray, mantener la aplicación visible de alguna manera
             self.app.setQuitOnLastWindowClosed(True)
         
         print(f"🚀 Aplicación iniciada en background")
         print(f"📡 Servidor destino: {server_url}")
-        print(f"⌨️  Presiona F4 para capturar pantalla")
+        print(f"⌨️ Presiona F4 para capturar pantalla")
 
     def setup_system_tray(self):
         """Configura el icono en la bandeja del sistema"""
@@ -471,44 +417,74 @@ class ConsultaApp(QObject):
         img_np = np.array(imagen)
         return cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-    def procesar_campos(self, campos: List[CampoTexto]) -> Optional[DatosPaquete]:
-        """Procesa los campos extraídos y retorna los datos del paquete"""
-        if len(campos) >= 13:
-            return DatosPaquete(
-                pieza=campos[0].texto,
-                guarda=campos[11].texto
-            ).limpiar()
-        return None
+    def procesar_datos_extraidos(self, datos_json: dict) -> Optional[DatosPaquete]:
+        """
+        Procesa los datos extraídos del JSON devuelto por procesarImagen
+        
+        Args:
+            datos_json (dict): JSON con keys 'pieza' y 'guarda'
+            
+        Returns:
+            Optional[DatosPaquete]: Objeto DatosPaquete o None si hay errores
+        """
+        try:
+            pieza_texto = datos_json.get('pieza', '').strip()
+            guarda_texto = datos_json.get('guarda', '').strip()
+            
+            # Verificar si hay errores en la extracción
+            if pieza_texto.startswith('Error:') or guarda_texto.startswith('Error:'):
+                logging.error(f"Error en extracción: pieza='{pieza_texto}', guarda='{guarda_texto}'")
+                return None
+            
+            # Crear y limpiar los datos
+            if pieza_texto and guarda_texto:
+                datos = DatosPaquete(pieza=pieza_texto, guarda=guarda_texto)
+                return datos.limpiar()
+            else:
+                logging.warning(f"Datos incompletos: pieza='{pieza_texto}', guarda='{guarda_texto}'")
+                return None
+                
+        except Exception as e:
+            logging.error(f"Error al procesar datos extraídos: {e}")
+            return None
 
     def manejar_captura(self):
         """Maneja el proceso de captura y procesamiento de imagen"""
         logging.info("Iniciando captura de pantalla")
         print("📸 Capturando pantalla...")
         
-        img = self.capturar_pantalla()
-        ventana = self.window_detector.process(img)
+        try:
+            # Capturar pantalla
+            img = self.capturar_pantalla()
+            
+            # Procesar imagen usando el método mejorado de fieldExtractor
+            print("🔍 Procesando imagen con método mejorado...")
+            datos_json = procesarImagen(img)
+            
+            # Procesar los datos extraídos
+            datos = self.procesar_datos_extraidos(datos_json)
+            
+            if datos is None:
+                print("⚠️ No se pudieron extraer los datos requeridos")
+                print(f"📋 Respuesta del procesador: {datos_json}")
+                return
 
-        if ventana is None:
-            logging.warning("No se detectó la ventana con borde gris")
-            print("⚠️  No se detectó la ventana")
-            return
+            if not datos.es_valido():
+                logging.warning(f"Datos inválidos: {datos}")
+                print(f"⚠️ Datos inválidos: Pieza={datos.pieza}, Guarda={datos.guarda}")
+                print("💡 Mostrando ventana de confirmación para edición manual...")
+                # Mostrar la ventana de confirmación incluso con datos inválidos
+                # para que el usuario pueda corregirlos manualmente
+                self.confirmation_window.show_data(datos)
+                return
 
-        campos = self.field_extractor.process(ventana)
-        datos = self.procesar_campos(campos)
-
-        if datos is None:
-            logging.warning("No se detectaron suficientes campos")
-            print("⚠️  No se detectaron suficientes campos")
-            return
-
-        if not datos.es_valido():
-            logging.warning(f"Datos inválidos: {datos}")
-            print(f"⚠️  Datos inválidos: {datos}")
-            return
-
-        # Mostrar ventana de confirmación
-        print(f"📋 Datos detectados: Pieza={datos.pieza}, Guarda={datos.guarda}")
-        self.confirmation_window.show_data(datos)
+            # Mostrar ventana de confirmación
+            print(f"📋 Datos detectados: Pieza={datos.pieza}, Guarda={datos.guarda}")
+            self.confirmation_window.show_data(datos)
+            
+        except Exception as e:
+            logging.error(f"Error en manejar_captura: {e}")
+            print(f"❌ Error durante la captura: {e}")
 
     def enviar_datos_servidor(self, datos: DatosPaquete):
         """Envía los datos al servidor"""
