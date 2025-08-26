@@ -47,3 +47,8 @@ venv32\Scripts\activate
 pyinstaller run_app.py --onefile --add-data "config.py;." --add-data "app_gui.py;."
 # para que no abra la consola
 pyinstaller run_app.py --onefile --windowed  --add-data "config.py;." --add-data "app_gui.py;."
+
+
+easyOCR
+pyinstaller run_app.py --onefile --add-data "main.py;." --add-data "config.py;."  --add-data "config_dialog.py;." --add-data "configuration_service.py;." --add-data "core.py;." --add-data "gui.py;." --add-data "procesarImagen.py;." --add-data "validator.py;." --add-data "workers.py;."
+pyinstaller run_app.py --onefile --windowed --add-data "main.py;." --add-data "config.py;."  --add-data "config_dialog.py;." --add-data "configuration_service.py;." --add-data "core.py;." --add-data "gui.py;." --add-data "procesarImagen.py;." --add-data "validator.py;." --add-data "workers.py;."

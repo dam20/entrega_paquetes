@@ -1,29 +1,25 @@
-import cv2
 import numpy as np
-import pytesseract
-import requests
-import time
-from PIL import ImageGrab
-import keyboard
-import argparse
-import re
-import sys
-from datetime import datetime
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Optional, List, Tuple
-import logging
-from threading import Thread, Event
+import cv2
 import signal
+import time
+import sys
+import logging
+import re
+from PIL import ImageGrab
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
-                               QLabel, QLineEdit, QPushButton, QSystemTrayIcon, 
+                               QLabel, QLineEdit, QSystemTrayIcon, 
                                QMenu, QMessageBox)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject, QThread
-from PyQt5.QtGui import QFont, QIcon, QPixmap
+from PyQt5.QtGui import QIcon, QPixmap
 
-# Importar la función de extracción mejorada
-from fieldExtractor import procesarImagen
+# Se importan las clases de otros módulos
+from core import DatosPaquete, ServerCommunicator
+from workers import KeyboardWorker, OcrRequestWorker # Importamos el nuevo worker
+
+# Se importa la función de procesamiento de imagen
+from procesarImagen import procesarImagen
+
 
 # Configuración de logging
 logging.basicConfig(
@@ -33,55 +29,11 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-@dataclass
-class CampoTexto:
-    """Clase para representar un campo de texto extraído de la imagen"""
-    y: int
-    x: int
-    texto: str
-
-@dataclass
-class DatosPaquete:
-    """Clase para representar los datos del paquete"""
-    pieza: str
-    guarda: str
-
-    def validar_formato_pieza(self) -> bool:
-        """Valida que el número de pieza tenga el formato correcto: 2 letras + 9 números + 2 letras"""
-        patron = re.compile(r'^[A-Z]{2}\d{9}[A-Z]{2}$')
-        return bool(patron.match(self.pieza))
-
-    def es_valido(self) -> bool:
-        """Verifica si los datos del paquete son válidos"""
-        pieza_limpia = self.limpiar().pieza
-        return self.validar_formato_pieza() and self.guarda.isdigit()
-
-    def limpiar(self) -> 'DatosPaquete':
-        """Limpia y formatea los datos del paquete"""
-        pieza_limpia = re.sub(r'\W+$', '', self.pieza.replace(" ", "").upper())
-        guarda_limpia = ''.join(filter(str.isdigit, self.guarda))
-        return DatosPaquete(pieza_limpia, guarda_limpia)
-
-class ServerCommunicator:
-    """Clase para manejar la comunicación con el servidor"""
-    def __init__(self, server_url: str):
-        self.server_url = server_url
-
-    def enviar_datos(self, datos: DatosPaquete) -> bool:
-        """Envía los datos al servidor y retorna si fue exitoso"""
-        try:
-            payload = {"pieza": datos.pieza, "guarda": datos.guarda}
-            response = requests.post(self.server_url, json=payload)
-            response.raise_for_status()
-            return True
-        except Exception as e:
-            logging.error(f"Error al enviar datos: {e}")
-            return False
 
 class ConfirmationWindow(QWidget):
     """Ventana de confirmación para mostrar los datos capturados"""
     
-    data_confirmed = pyqtSignal(object)  # Señal emitida cuando se confirman los datos
+    data_confirmed = pyqtSignal(object)
     
     def __init__(self):
         super().__init__()
@@ -97,15 +49,9 @@ class ConfirmationWindow(QWidget):
         """Configura las propiedades de la ventana"""
         self.setWindowTitle("Confirmación de Datos")
         self.setFixedSize(300, 150)
-        
-        # Posicionar en la esquina superior derecha
         screen = QApplication.primaryScreen().geometry()
         self.move(screen.width() - 320, 20)
-        
-        # Mantener siempre visible
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
-        
-        # Estilo
         self.setStyleSheet("""
             QWidget {
                 background-color: #2b2b2b;
@@ -144,14 +90,10 @@ class ConfirmationWindow(QWidget):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
         layout.setContentsMargins(15, 10, 15, 10)
-
-        # Título
         title_label = QLabel("📦 Datos Capturados")
         title_label.setObjectName("title")
         title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(title_label)
-
-        # Campo Pieza
         pieza_layout = QHBoxLayout()
         pieza_label = QLabel("Pieza:")
         pieza_label.setFixedWidth(60)
@@ -161,8 +103,6 @@ class ConfirmationWindow(QWidget):
         pieza_layout.addWidget(pieza_label)
         pieza_layout.addWidget(self.pieza_edit)
         layout.addLayout(pieza_layout)
-
-        # Campo Guarda
         guarda_layout = QHBoxLayout()
         guarda_label = QLabel("Guarda:")
         guarda_label.setFixedWidth(60)
@@ -172,8 +112,6 @@ class ConfirmationWindow(QWidget):
         guarda_layout.addWidget(guarda_label)
         guarda_layout.addWidget(self.guarda_edit)
         layout.addLayout(guarda_layout)
-
-        # Contador
         self.countdown_label = QLabel()
         self.countdown_label.setObjectName("countdown")
         self.countdown_label.setAlignment(Qt.AlignCenter)
@@ -207,12 +145,10 @@ class ConfirmationWindow(QWidget):
         self.pieza_edit.setText(datos.pieza)
         self.guarda_edit.setText(datos.guarda)
         self.remaining_seconds = 5
-        
         self.show()
         self.activateWindow()
         self.raise_()
-        
-        self.countdown_timer.start(1000)  # Actualizar cada segundo
+        self.countdown_timer.start(1000)
         self.update_countdown()
 
     def update_countdown(self):
@@ -226,126 +162,74 @@ class ConfirmationWindow(QWidget):
 
     def confirm_data(self):
         """Confirma los datos y los envía"""
-        # Actualizar los datos con los valores actuales
         pieza_actual = self.pieza_edit.text().strip()
         guarda_actual = self.guarda_edit.text().strip()
-        
         datos_actualizados = DatosPaquete(pieza_actual, guarda_actual).limpiar()
-        
         self.data_confirmed.emit(datos_actualizados)
-        self.hide()  # Ocultar en lugar de cerrar
+        self.hide()
 
     def closeEvent(self, event):
         """Se ejecuta al cerrar la ventana"""
         self.countdown_timer.stop()
-        # No cerrar la aplicación, solo ocultar la ventana
         event.accept()
         self.hide()
 
-class KeyboardWorker(QThread):
-    """Worker thread para manejar la captura de teclas"""
-    
-    f4_pressed = pyqtSignal()
-    
-    def __init__(self):
-        super().__init__()
-        self.running = True
-        self._stop_event = False
-
-    def run(self):
-        """Ejecuta el bucle de detección de teclas"""
-        print("🎯 Detector de teclas iniciado (F4 para capturar)")
-        last_f4_time = 0
-        
-        while self.running and not self._stop_event:
-            try:
-                if keyboard.is_pressed('f4'):
-                    current_time = time.time()
-                    # Anti-rebote: solo permitir F4 cada 2 segundos
-                    if current_time - last_f4_time > 2.0:
-                        self.f4_pressed.emit()
-                        last_f4_time = current_time
-                        
-                time.sleep(0.1)  # Reducir uso de CPU
-            except Exception as e:
-                print(f"⚠️ Error en detección de teclas: {e}")
-                time.sleep(1)  # Pausa más larga en caso de error
-
-    def stop(self):
-        """Detiene el worker"""
-        print("🛑 Deteniendo detector de teclas...")
-        self.running = False
-        self._stop_event = True
 
 class ConsultaApp(QObject):
     """Clase principal de la aplicación con interfaz gráfica"""
     
     def __init__(self, server_url: str, config_service=None):
         super().__init__()
-        self.server = ServerCommunicator(server_url)
+        # ServerCommunicator ahora recibe la URL base
+        self.server = ServerCommunicator(server_url) 
         self.config_service = config_service
-        
-        # Interfaz gráfica
         self.app = QApplication.instance()
         if self.app is None:
             self.app = QApplication(sys.argv)
         
         self.confirmation_window = ConfirmationWindow()
+        # Conexión para enviar datos *después* de que el usuario confirma en la ventana
         self.confirmation_window.data_confirmed.connect(self.enviar_datos_servidor)
         
-        # Worker para captura de teclas
         self.keyboard_worker = KeyboardWorker()
         self.keyboard_worker.f4_pressed.connect(self.manejar_captura)
         
-        # System tray
+        # Propiedad para mantener la referencia al worker de OCR
+        self.ocr_worker = None 
+
         if not self.setup_system_tray():
             print("⚠️ Sistema sin soporte para bandeja del sistema")
-            # Si no hay system tray, mantener la aplicación visible de alguna manera
             self.app.setQuitOnLastWindowClosed(True)
         
         print(f"🚀 Aplicación iniciada en background")
-        print(f"📡 Servidor destino: {server_url}")
+        # Mostrar la URL base del servidor aquí
+        print(f"📡 Servidor base: {server_url}") 
         print(f"⌨️ Presiona F4 para capturar pantalla")
 
     def setup_system_tray(self):
         """Configura el icono en la bandeja del sistema"""
-        # Verificar si el sistema soporta system tray
         if not QSystemTrayIcon.isSystemTrayAvailable():
-            QMessageBox.critical(None, "System Tray",
-                               "No se detectó soporte para System Tray en este sistema.")
+            QMessageBox.critical(None, "System Tray", "No se detectó soporte para System Tray en este sistema.")
             return False
         
         self.tray_icon = QSystemTrayIcon()
-        
-        # Crear un icono simple si no existe uno
         pixmap = QPixmap(16, 16)
         pixmap.fill(Qt.blue)
         icon = QIcon(pixmap)
-        
         self.tray_icon.setIcon(icon)
         self.tray_icon.setToolTip("Consulta App - Presiona F4 para capturar")
-        
-        # Menú del tray
         tray_menu = QMenu()
-        
         show_action = tray_menu.addAction("📊 Estado")
         show_action.triggered.connect(self.show_log)
-        
-        # Agregar opción para reconfigurar servidor si tenemos el servicio
         if self.config_service:
             tray_menu.addSeparator()
             config_action = tray_menu.addAction("⚙️ Configurar Servidor")
             config_action.triggered.connect(self.show_configuration_dialog)
-        
         tray_menu.addSeparator()
-        
         quit_action = tray_menu.addAction("❌ Salir")
         quit_action.triggered.connect(self.quit_application)
-        
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.show()
-        
-        # Conectar doble click para mostrar estado
         self.tray_icon.activated.connect(self.tray_icon_activated)
         
         return True
@@ -353,19 +237,14 @@ class ConsultaApp(QObject):
     def show_configuration_dialog(self):
         """Muestra el diálogo de configuración del servidor"""
         if self.config_service and self.config_service.show_configuration_dialog():
-            # Configuración actualizada, reiniciar el servidor comunicador
-            server_url, _ = self.config_service.get_server_urls()
-            if server_url:
-                if not server_url.endswith('/'):
-                    server_url += '/'
-                server_url += 'pedido'
-                self.server = ServerCommunicator(server_url)
-                print(f"🔄 Configuración actualizada: {server_url}")
-                
-                # Mostrar mensaje de confirmación
+            server_url_base, _ = self.config_service.get_server_urls()
+            if server_url_base:
+                # Actualizamos ServerCommunicator con la URL base
+                self.server = ServerCommunicator(server_url_base) 
+                print(f"🔄 Configuración actualizada: {server_url_base}")
                 msg = QMessageBox()
                 msg.setWindowTitle("Configuración Actualizada")
-                msg.setText(f"✅ Nueva configuración guardada:\n{server_url}")
+                msg.setText(f"✅ Nueva configuración guardada:\n{server_url_base}")
                 msg.setIcon(QMessageBox.Information)
                 msg.exec()
     
@@ -377,7 +256,6 @@ class ConsultaApp(QObject):
     def show_log(self):
         """Muestra información del log"""
         status = "🟢 En línea" if self.keyboard_worker.isRunning() else "🔴 Desconectado"
-        
         msg = QMessageBox()
         msg.setWindowTitle("Estado de la Aplicación")
         msg.setText(f"{status} - Aplicación funcionando\n\n"
@@ -386,7 +264,7 @@ class ConsultaApp(QObject):
                    "• Doble click: Editar campos\n"
                    "• Enter: Confirmar envío\n"
                    "• Escape: Cancelar\n\n"
-                   f"🌐 Servidor: {self.server.server_url}")
+                   f"🌐 Servidor: {self.server.server_url}") # server_url ahora es la URL base
         msg.setIcon(QMessageBox.Information)
         msg.exec()
 
@@ -394,18 +272,22 @@ class ConsultaApp(QObject):
         """Cierra la aplicación"""
         print("👋 Cerrando aplicación...")
         
-        # Detener el keyboard worker
         if hasattr(self, 'keyboard_worker') and self.keyboard_worker.isRunning():
             self.keyboard_worker.stop()
             self.keyboard_worker.quit()
-            if not self.keyboard_worker.wait(3000):  # Esperar máximo 3 segundos
+            if not self.keyboard_worker.wait(3000):
                 self.keyboard_worker.terminate()
         
-        # Cerrar ventana de confirmación
+        # Detener cualquier worker de OCR que esté corriendo
+        if hasattr(self, 'ocr_worker') and self.ocr_worker and self.ocr_worker.isRunning():
+            self.ocr_worker.quit()
+            self.ocr_worker.wait() # Esperar a que el hilo termine
+            print("🛑 Worker de OCR detenido.")
+
+
         if hasattr(self, 'confirmation_window'):
             self.confirmation_window.close()
         
-        # Ocultar tray icon
         if hasattr(self, 'tray_icon'):
             self.tray_icon.hide()
             
@@ -417,137 +299,112 @@ class ConsultaApp(QObject):
         img_np = np.array(imagen)
         return cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-    def procesar_datos_extraidos(self, datos_json: dict) -> Optional[DatosPaquete]:
-        """
-        Procesa los datos extraídos del JSON devuelto por procesarImagen
-        
-        Args:
-            datos_json (dict): JSON con keys 'pieza' y 'guarda'
-            
-        Returns:
-            Optional[DatosPaquete]: Objeto DatosPaquete o None si hay errores
-        """
+
+    def procesar_datos_extraidos(self, datos_json: dict):
+        """Procesa los datos extraídos del JSON"""
         try:
             pieza_texto = datos_json.get('pieza', '').strip()
             guarda_texto = datos_json.get('guarda', '').strip()
             
-            # Verificar si hay errores en la extracción
             if pieza_texto.startswith('Error:') or guarda_texto.startswith('Error:'):
                 logging.error(f"Error en extracción: pieza='{pieza_texto}', guarda='{guarda_texto}'")
                 return None
             
-            # Crear y limpiar los datos
             if pieza_texto and guarda_texto:
                 datos = DatosPaquete(pieza=pieza_texto, guarda=guarda_texto)
                 return datos.limpiar()
             else:
                 logging.warning(f"Datos incompletos: pieza='{pieza_texto}', guarda='{guarda_texto}'")
                 return None
-                
         except Exception as e:
             logging.error(f"Error al procesar datos extraídos: {e}")
             return None
 
     def manejar_captura(self):
-        """Maneja el proceso de captura y procesamiento de imagen"""
-        logging.info("Iniciando captura de pantalla")
-        print("📸 Capturando pantalla...")
+        """Maneja el proceso de captura, recorte y envía las imágenes para OCR."""
+        logging.info("Iniciando captura de pantalla y recorte de imágenes.")
+        print("📸 Capturando pantalla y recortando imágenes...")
         
         try:
-            # Capturar pantalla
             img = self.capturar_pantalla()
             
-            # Procesar imagen usando el método mejorado de fieldExtractor
-            print("🔍 Procesando imagen con método mejorado...")
-            datos_json = procesarImagen(img)
-            
-            # Procesar los datos extraídos
-            datos = self.procesar_datos_extraidos(datos_json)
-            
-            if datos is None:
-                print("⚠️ No se pudieron extraer los datos requeridos")
-                print(f"📋 Respuesta del procesador: {datos_json}")
+            # procesarImagen retorna las imágenes recortadas (numpy arrays codificados en base64)
+            # Asegúrate de que procesarImagen.py realmente devuelva los strings base64 aquí
+            base64_pieza_str, base64_guarda_str = procesarImagen(img)
+
+            if base64_pieza_str is None or base64_guarda_str is None:
+                print("⚠️ No se pudieron obtener todos los recortes requeridos (Base64).")
+                QMessageBox.warning(None, "Error de Recorte", "No se pudieron obtener todos los recortes de imagen necesarios.")
                 return
 
-            if not datos.es_valido():
-                logging.warning(f"Datos inválidos: {datos}")
-                print(f"⚠️ Datos inválidos: Pieza={datos.pieza}, Guarda={datos.guarda}")
-                print("💡 Mostrando ventana de confirmación para edición manual...")
-                # Mostrar la ventana de confirmación incluso con datos inválidos
-                # para que el usuario pueda corregirlos manualmente
-                self.confirmation_window.show_data(datos)
-                return
-
-            # Mostrar ventana de confirmación
-            print(f"📋 Datos detectados: Pieza={datos.pieza}, Guarda={datos.guarda}")
-            self.confirmation_window.show_data(datos)
+            print("✅ Imágenes recortadas y codificadas con éxito. Iniciando envío al servidor para OCR...")
             
+            # Crear y arrancar el worker para la solicitud de OCR
+            # Pasamos las cadenas Base64 directamente, ya que procesarImagen ya las generó
+            self.ocr_worker = OcrRequestWorker(base64_pieza_str, base64_guarda_str, self.server)
+            self.ocr_worker.ocr_result.connect(self.handle_ocr_response)
+            self.ocr_worker.ocr_error.connect(self.handle_ocr_error)
+            self.ocr_worker.start() # Inicia el hilo en segundo plano
+
         except Exception as e:
-            logging.error(f"Error en manejar_captura: {e}")
-            print(f"❌ Error durante la captura: {e}")
+            logging.error(f"Error en manejar_captura (captura/recorte): {e}")
+            print(f"❌ Error durante la captura y recorte: {e}")
+            QMessageBox.critical(None, "Error Crítico", f"Ocurrió un error inesperado durante la captura: {e}")
+
+    def handle_ocr_response(self, datos_json: dict):
+        """Maneja la respuesta exitosa del worker de OCR."""
+        print("✅ Respuesta de OCR recibida del servidor.")
+        datos_paquete = self.procesar_datos_extraidos(datos_json)
+
+        if datos_paquete is None:
+            print("⚠️ El servidor devolvió datos no válidos o incompletos para OCR.")
+            QMessageBox.warning(None, "Error de OCR", "El servidor devolvió datos no válidos o incompletos.")
+            return
+
+        if not datos_paquete.es_valido():
+            logging.warning(f"Datos inválidos después de OCR: {datos_paquete}")
+            print(f"⚠️ Datos inválidos: Pieza={datos_paquete.pieza}, Guarda={datos_paquete.guarda}")
+            print("💡 Mostrando ventana de confirmación para edición manual...")
+            QMessageBox.information(None, "Datos Inválidos", "Los datos extraídos no cumplen el formato esperado. Revise y edite.")
+            self.confirmation_window.show_data(datos_paquete)
+            return
+
+        print(f"📋 Datos detectados: Pieza={datos_paquete.pieza}, Guarda={datos_paquete.guarda}")
+        self.confirmation_window.show_data(datos_paquete)
+
+    def handle_ocr_error(self, error_message: str):
+        """Maneja los errores del worker de OCR."""
+        logging.error(f"Error del worker de OCR: {error_message}")
+        print(f"❌ Error al procesar OCR en el servidor: {error_message}")
+        QMessageBox.critical(None, "Error de OCR", f"No se pudo procesar la imagen en el servidor: {error_message}")
+
 
     def enviar_datos_servidor(self, datos: DatosPaquete):
-        """Envía los datos al servidor"""
+        """Envía los datos (ya validados y posiblemente editados por el usuario) al servidor."""
         try:
-            if self.server.enviar_datos(datos):
-                logging.info(f"✅ Datos enviados correctamente: {datos}")
-                print(f"✅ Datos enviados: {datos}")
+            # Aquí llamamos al método de ServerCommunicator para enviar los datos finales del paquete
+            if self.server.enviar_datos(datos): 
+                logging.info(f"✅ Datos finales enviados correctamente: {datos}")
+                print(f"✅ Datos finales enviados: {datos}")
+                #QMessageBox.information(None, "Envío Exitoso", "Los datos han sido enviados correctamente.")
             else:
-                logging.error(f"❌ Error al enviar datos: {datos}")
-                print(f"❌ Error al enviar: {datos}")
+                logging.error(f"❌ Error al enviar datos finales: {datos}")
+                print(f"❌ Error al enviar datos finales: {datos}")
+                QMessageBox.critical(None, "Error de Envío", "Hubo un error al enviar los datos finales al servidor.")
         except Exception as e:
-            logging.error(f"❌ Excepción al enviar datos: {e}")
-            print(f"❌ Excepción al enviar: {e}")
+            logging.error(f"❌ Excepción al enviar datos finales: {e}")
+            print(f"❌ Excepción al enviar datos finales: {e}")
+            QMessageBox.critical(None, "Error de Envío", f"Ocurrió una excepción al enviar los datos finales: {e}")
         
-        # La ventana ya se oculta automáticamente en confirm_data()
-
     def run(self):
         """Ejecuta la aplicación"""
-        # Configurar para que no cierre al cerrar la última ventana
         self.app.setQuitOnLastWindowClosed(False)
-        
         self.keyboard_worker.start()
-        
-        # Manejar señales del sistema para cierre limpio
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
-        
         return self.app.exec()
 
     def signal_handler(self, signum, frame):
         """Maneja las señales del sistema"""
         print("\n👋 Cerrando aplicación...")
         self.quit_application()
-
-def main():
-    # Inicializar QApplication tempormente para el diálogo de configuración
-    temp_app = QApplication.instance()
-    if temp_app is None:
-        temp_app = QApplication(sys.argv)
-    
-    from configuration_service import ConfigurationService
-    
-    config_service = ConfigurationService()
-    
-    # Asegurar que la aplicación esté configurada
-    if not config_service.ensure_configuration():
-        print("❌ Configuración cancelada por el usuario")
-        return 1
-    
-    # Obtener la URL del servidor
-    server_url, _ = config_service.get_server_urls()
-    
-    if server_url is None:
-        print("❌ Error: No se pudo obtener la configuración del servidor")
-        return 1
-    
-    # Ajustar la URL para incluir el endpoint /pedido
-    if not server_url.endswith('/'):
-        server_url += '/'
-    server_url += 'pedido'
-    
-    app = ConsultaApp(server_url, config_service)
-    sys.exit(app.run())
-
-if __name__ == "__main__":
-    main()

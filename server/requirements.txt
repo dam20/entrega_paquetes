@@ -1,5 +1,7 @@
 fastapi
 uvicorn
-pydantic
-websockets
-sqlite-utils
+easyocr
+opencv-python
+numpy
+#sqlite3  # Incluido en Python estándar
+pydantic  # Incluido con FastAPI

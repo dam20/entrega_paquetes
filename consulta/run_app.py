@@ -9,41 +9,45 @@ import subprocess
 from pathlib import Path
 
 def check_requirements():
-    # """Verifica que las dependencias estén instaladas"""
-    # required_packages = [
-    #     ('PySide6', 'PySide6'), 
-    #     ('cv2', 'opencv-python'), 
-    #     ('numpy', 'numpy'), 
-    #     ('pytesseract', 'pytesseract'), 
-    #     ('requests', 'requests'), 
-    #     ('PIL', 'Pillow'), 
-    #     ('keyboard', 'keyboard')
-    # ]
+    """Verifica que las dependencias estén instaladas"""
+    required_packages = [
+        ('PyQt5', 'PyQt5'), 
+        ('cv2', 'opencv-python'), 
+        ('numpy', 'numpy'),  
+        ('requests', 'requests'), 
+        ('PIL', 'Pillow'), 
+        ('keyboard', 'keyboard')
+    ]
     
-    # missing_packages = []
+    missing_packages = []
     
-    # for import_name, package_name in required_packages:
-    #     try:
-    #         __import__(import_name)
-    #     except ImportError:
-    #         missing_packages.append(package_name)
+    for import_name, package_name in required_packages:
+        try:
+            __import__(import_name)
+        except ImportError:
+            missing_packages.append(package_name)
     
-    # if missing_packages:
-    #     print("❌ Faltan las siguientes dependencias:")
-    #     for pkg in missing_packages:
-    #         print(f"   - {pkg}")
-    #     print("\n💡 Instálalas con: pip install -r requirements.txt")
-    #     return False
+    if missing_packages:
+        print("❌ Faltan las siguientes dependencias:")
+        for pkg in missing_packages:
+            print(f"   - {pkg}")
+        print("\n💡 Instálalas con: pip install -r requirements.txt")
+        return False
     
     return True
 
 def check_required_files():
     """Verifica que los archivos requeridos existan"""
     required_files = [
-        'app_gui.py',
+        'main.py',
         'config.py', 
         'config_dialog.py',
-        'configuration_service.py'
+        'configuration_service.py',
+        'core.py',
+        'gui.py',
+        'procesarImagen.py',
+        'validator.py',
+        'workers.py'
     ]
     
     script_dir = Path(__file__).parent
@@ -66,12 +70,12 @@ def main():
     print("🚀 Iniciando Consulta App...")
     
     # Verificar dependencias
-    if not check_requirements():
-        return 1
+    # if not check_requirements():
+    #     return 1
     
     # Verificar archivos requeridos
-    if not check_required_files():
-        return 1
+    # if not check_required_files():
+    #     return 1
     
     # Cambiar al directorio del script
     script_dir = Path(__file__).parent
@@ -79,7 +83,7 @@ def main():
     
     try:
         # Ejecutar la aplicación principal
-        from app_gui import main as app_main
+        from main import main as app_main
         return app_main()
         
     except KeyboardInterrupt:

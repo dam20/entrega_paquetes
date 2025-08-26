@@ -1,6 +1,6 @@
 opencv-python
 numpy
-pytesseract
 requests
 Pillow
 keyboard
+PyQt5
