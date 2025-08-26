@@ -20,7 +20,7 @@ def preprocesar_ocr(imagen):
     escala = 4
     return cv2.resize(imagen, None, fx=escala, fy=escala, interpolation=cv2.INTER_CUBIC)
 
-def extraer_datos_ocr(img_pieza: np.ndarray, img_guarda: np.ndarray) -> tuple[str, str]:
+def extraer_datos_ocr(img_pieza: np.ndarray, img_guarda: np.ndarray) -> tuple[str, str, bool]:
     """
     Realiza el OCR en las imágenes de pieza y guarda y devuelve el texto extraído
     utilizando EasyOCR y la lógica de procesamiento específica.
@@ -35,6 +35,7 @@ def extraer_datos_ocr(img_pieza: np.ndarray, img_guarda: np.ndarray) -> tuple[st
     """
     texto_pieza = ""
     texto_guarda = ""
+    poste_restante = False
 
     img_pieza = preprocesar_ocr(img_pieza)
     img_guarda = preprocesar_ocr(img_guarda)
@@ -55,11 +56,12 @@ def extraer_datos_ocr(img_pieza: np.ndarray, img_guarda: np.ndarray) -> tuple[st
     try:
         logging.info("Iniciando extracción OCR de la imagen de guarda con EasyOCR.")
         # Llamamos a la función dedicada para procesar el lugar de guarda con EasyOCR
-        texto_guarda = procesar_lugar_guarda_easyocr(img_guarda)
-        logging.info(f"EasyOCR - Guarda: '{texto_guarda}'")
-            
+        texto_guarda, poste_restante = procesar_lugar_guarda_easyocr(img_guarda)
+
+        logging.info(f"EasyOCR - Guarda: '{texto_guarda}' (poste restante: {poste_restante})")
+
     except Exception as e:
         logging.error(f"Error al procesar OCR de 'guarda' con EasyOCR: {e}", exc_info=True)
         texto_guarda = f"Error: {e}" # Indicar error si falla el OCR de guarda
 
-    return texto_pieza, texto_guarda
+    return texto_pieza, texto_guarda, poste_restante

@@ -41,6 +41,7 @@ class OcrRequest(BaseModel):
 class Pedido(BaseModel):
     pieza: str
     guarda: str
+    poste_restante: bool
 
 class EstadoUpdate(BaseModel):
     estado: str
@@ -63,7 +64,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pieza TEXT,
             guarda TEXT,
-            estado TEXT
+            estado TEXT,
+            poste_restante BOOLEAN
         )
     ''')
     conn.commit()
@@ -86,8 +88,8 @@ async def health_check():
 async def nuevo_pedido(pedido: Pedido):
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
-    c.execute("INSERT INTO pedidos (pieza, guarda, estado) VALUES (?, ?, ?)",
-              (pedido.pieza, pedido.guarda, "Pedido al Deposito"))
+    c.execute("INSERT INTO pedidos (pieza, guarda, estado, poste_restante) VALUES (?, ?, ?, ?)",
+              (pedido.pieza, pedido.guarda, "Pedido al Deposito", pedido.poste_restante))
     conn.commit()
     conn.close()
 
@@ -103,8 +105,8 @@ async def nuevo_pedido(pedido: Pedido):
             logging.warning("No se pudo enviar mensaje a WebSocket, la conexión podría estar cerrada.")
 
 
-    logging.info(f"Pedido recibido: Pieza={pedido.pieza}, Guarda={pedido.guarda}")
-    print(f"✅ Pedido recibido en el servidor: Pieza={pedido.pieza}, Guarda={pedido.guarda}")
+    logging.info(f"Pedido recibido: Pieza={pedido.pieza}, Guarda={pedido.guarda}, Poste Restante={pedido.poste_restante}")
+    print(f"✅ Pedido recibido en el servidor: Pieza={pedido.pieza}, Guarda={pedido.guarda}, Poste Restante={pedido.poste_restante}")
     return {"status": "ok", "message": "Pedido creado correctamente"}
 
 # Endpoint principal para el procesamiento de OCR
@@ -136,10 +138,10 @@ async def procesar_ocr_endpoint(request_data: OcrRequest):
         # Llama a la función externa para realizar el OCR
         # Asegúrate de que 'extraer_datos_ocr' en 'procesarImagen.py'
         # reciba los objetos de imagen de OpenCV (numpy arrays)
-        texto_pieza, texto_guarda = extraer_datos_ocr(img_pieza, img_guarda)
+        texto_pieza, texto_guarda, poste_restante = extraer_datos_ocr(img_pieza, img_guarda)
         
-        logging.info(f"OCR completado. Pieza: '{texto_pieza}', Guarda: '{texto_guarda}'")
-        return {"pieza": texto_pieza, "guarda": texto_guarda}
+        logging.info(f"OCR completado. Pieza: '{texto_pieza}', Guarda: '{texto_guarda}', Poste Restante: '{poste_restante}'")
+        return {"pieza": texto_pieza, "guarda": texto_guarda, "poste_restante": poste_restante}
 
     except HTTPException as http_exc:
         # Re-lanzar excepciones HTTP para que FastAPI las maneje

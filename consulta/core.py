@@ -16,6 +16,7 @@ class DatosPaquete:
     """Clase para representar los datos del paquete"""
     pieza: str
     guarda: str
+    poste_restante: bool
 
     def validar_formato_pieza(self) -> bool:
         """Valida que el número de pieza tenga el formato correcto: 2 letras + 9 números + 2 letras"""
@@ -31,7 +32,8 @@ class DatosPaquete:
         """Limpia y formatea los datos del paquete"""
         pieza_limpia = re.sub(r'\W+$', '', self.pieza.replace(" ", "").upper())
         guarda_limpia = ''.join(filter(str.isdigit, self.guarda))
-        return DatosPaquete(pieza_limpia, guarda_limpia)
+        
+        return DatosPaquete(pieza_limpia, guarda_limpia, self.poste_restante)
 
 class ServerCommunicator:
     """Clase para manejar la comunicación con el servidor"""
@@ -44,7 +46,7 @@ class ServerCommunicator:
         # Usar la URL base + el endpoint específico para los datos finales
         target_url = f"{self.server_url}/pedido" 
         try:
-            payload = {"pieza": datos.pieza, "guarda": datos.guarda}
+            payload = {"pieza": datos.pieza, "guarda": datos.guarda, "poste_restante": datos.poste_restante}
             response = requests.post(target_url, json=payload, timeout=10) # Añadir timeout
             response.raise_for_status()
             return True

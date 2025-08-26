@@ -91,6 +91,7 @@ def procesar_lugar_guarda_easyocr(imagen_array):
     """
     Procesa el campo de lugar de guarda con EasyOCR.
     """
+    poste_restante = False
     logging.info("📍 Procesando lugar de guarda con EasyOCR...")
     
     texto_extraido = extraer_texto_easyocr(imagen_array)
@@ -102,12 +103,11 @@ def procesar_lugar_guarda_easyocr(imagen_array):
     
     # Corregir y normalizar
     texto_corregido = LugarGuardaValidator.corregir_lugar_guarda_ocr(texto_extraido)
-    texto_normalizado = texto_corregido
-    #texto_normalizado = LugarGuardaValidator.normalizar_lugar_guarda(texto_corregido)
+    texto_normalizado, poste_restante = LugarGuardaValidator.normalizar_lugar_guarda(texto_corregido)
     
     if LugarGuardaValidator.validar_lugar_guarda(texto_normalizado):
         logging.info(f"✅ Lugar de guarda válido: '{texto_normalizado}' (original: '{texto_extraido}')")
-        return texto_normalizado
+        return texto_normalizado, poste_restante
     else:
         logging.warning(f"⚠️ Lugar de guarda formato incorrecto: '{texto_normalizado}' (original: '{texto_extraido}')")
-        return texto_normalizado
+        return texto_normalizado, poste_restante

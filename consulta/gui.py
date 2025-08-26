@@ -142,6 +142,7 @@ class ConfirmationWindow(QWidget):
     def show_data(self, datos: DatosPaquete):
         """Muestra los datos en la ventana"""
         self.datos = datos
+        self.poste_restante = datos.poste_restante
         self.pieza_edit.setText(datos.pieza)
         self.guarda_edit.setText(datos.guarda)
         self.remaining_seconds = 5
@@ -164,7 +165,8 @@ class ConfirmationWindow(QWidget):
         """Confirma los datos y los envía"""
         pieza_actual = self.pieza_edit.text().strip()
         guarda_actual = self.guarda_edit.text().strip()
-        datos_actualizados = DatosPaquete(pieza_actual, guarda_actual).limpiar()
+        poste_restante = self.poste_restante
+        datos_actualizados = DatosPaquete(pieza_actual, guarda_actual, poste_restante).limpiar()
         self.data_confirmed.emit(datos_actualizados)
         self.hide()
 
@@ -305,16 +307,17 @@ class ConsultaApp(QObject):
         try:
             pieza_texto = datos_json.get('pieza', '').strip()
             guarda_texto = datos_json.get('guarda', '').strip()
+            poste_restante = datos_json.get('poste_restante', False)
             
             if pieza_texto.startswith('Error:') or guarda_texto.startswith('Error:'):
-                logging.error(f"Error en extracción: pieza='{pieza_texto}', guarda='{guarda_texto}'")
+                logging.error(f"Error en extracción: pieza='{pieza_texto}', guarda='{guarda_texto}', poste_restante='{poste_restante}'")
                 return None
             
             if pieza_texto and guarda_texto:
-                datos = DatosPaquete(pieza=pieza_texto, guarda=guarda_texto)
+                datos = DatosPaquete(pieza=pieza_texto, guarda=guarda_texto, poste_restante=poste_restante)
                 return datos.limpiar()
             else:
-                logging.warning(f"Datos incompletos: pieza='{pieza_texto}', guarda='{guarda_texto}'")
+                logging.warning(f"Datos incompletos: pieza='{pieza_texto}', guarda='{guarda_texto}', poste_restante='{poste_restante}'")
                 return None
         except Exception as e:
             logging.error(f"Error al procesar datos extraídos: {e}")
@@ -363,13 +366,13 @@ class ConsultaApp(QObject):
 
         if not datos_paquete.es_valido():
             logging.warning(f"Datos inválidos después de OCR: {datos_paquete}")
-            print(f"⚠️ Datos inválidos: Pieza={datos_paquete.pieza}, Guarda={datos_paquete.guarda}")
+            print(f"⚠️ Datos inválidos: Pieza={datos_paquete.pieza}, Guarda={datos_paquete.guarda}, Poste Restante={datos_paquete.poste_restante}")
             print("💡 Mostrando ventana de confirmación para edición manual...")
             QMessageBox.information(None, "Datos Inválidos", "Los datos extraídos no cumplen el formato esperado. Revise y edite.")
             self.confirmation_window.show_data(datos_paquete)
             return
 
-        print(f"📋 Datos detectados: Pieza={datos_paquete.pieza}, Guarda={datos_paquete.guarda}")
+        print(f"📋 Datos detectados: Pieza={datos_paquete.pieza}, Guarda={datos_paquete.guarda}, Poste Restante={datos_paquete.poste_restante}")
         self.confirmation_window.show_data(datos_paquete)
 
     def handle_ocr_error(self, error_message: str):

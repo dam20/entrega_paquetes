@@ -140,7 +140,9 @@ class LugarGuardaValidator:
     @classmethod
     def validar_lugar_guarda(cls, lugar: str) -> bool:
         """
-        Valida que el lugar de guarda sea válido
+        Valida que el lugar de guarda sea válido. Acepta:
+        - Solo números (hasta 3 dígitos)
+        - Números precedidos por '#' (ej: '#104', '#58')
         
         Args:
             lugar (str): Lugar de guarda a validar
@@ -150,14 +152,46 @@ class LugarGuardaValidator:
         """
         if not lugar:
             return False
-            
+
         lugar_limpio = lugar.strip().upper()
-        
+
         # Caso 1: Solo numérico (hasta 3 dígitos)
-        if lugar_limpio.isdigit():
-            return len(lugar_limpio) <= 3
-                
+        if lugar_limpio.isdigit() and len(lugar_limpio) <= 3:
+            return True
+
+        # Caso 2: Comienza con '#' seguido de 1 a 3 dígitos
+        if re.fullmatch(r'#\d{1,3}', lugar_limpio):
+            return True
+
         return False
+    
+    @classmethod
+    def normalizar_lugar_guarda(cls, lugar: str) -> Tuple[str, bool]:
+        """
+        Normaliza el lugar de guarda a un formato estándar.
+        Esta función debe ser el último paso de corrección.
+
+        Args:
+            lugar (str): Lugar de guarda original
+
+        Returns:
+            Tuple[str, bool]: (Lugar normalizado como str, True si tenía #, False si no)
+        """
+        if not lugar:
+            return lugar, False
+
+        lugar_limpio = lugar.strip().upper()
+
+        # Caso 1: Solo numérico (hasta 3 dígitos)
+        if lugar_limpio.isdigit() and len(lugar_limpio) <= 3:
+            return lugar_limpio, False
+
+        # Caso 2: Comienza con '#' seguido de 1 a 3 dígitos
+        if re.fullmatch(r'#\d{1,3}', lugar_limpio):
+            return lugar_limpio[1:], True
+
+        return lugar, False
+
 
 def test_validator():
     """Función de prueba para los validadores"""
