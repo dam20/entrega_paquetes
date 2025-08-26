@@ -99,7 +99,8 @@ async def nuevo_pedido(pedido: Pedido):
             await ws.send_json({
                 "pieza": pedido.pieza,
                 "guarda": pedido.guarda,
-                "estado": "Pedido al Deposito"
+                "estado": "Pedido al Deposito",
+                "poste_restante": pedido.poste_restante
             })
         except RuntimeError: # Manejar conexiones WebSocket cerradas
             logging.warning("No se pudo enviar mensaje a WebSocket, la conexión podría estar cerrada.")
@@ -196,14 +197,14 @@ async def obtener_pedidos(estado: str = Query(default=None)):
         placeholders = ",".join("?" * len(estados))
         # Asegúrate de que la consulta SQL sea segura contra inyección (FastAPI ayuda con esto en Path y Query)
         c.execute(
-            f"SELECT pieza, guarda, estado FROM pedidos WHERE estado IN ({placeholders})",
+            f"SELECT pieza, guarda, estado, poste_restante FROM pedidos WHERE estado IN ({placeholders})",
             estados
         )
     else:
-        c.execute("SELECT pieza, guarda, estado FROM pedidos")
+        c.execute("SELECT pieza, guarda, estado, poste_restante FROM pedidos")
     rows = c.fetchall()
     conn.close()
-    return [{"pieza": r[0], "guarda": r[1], "estado": r[2]} for r in rows]
+    return [{"pieza": r[0], "guarda": r[1], "estado": r[2], "poste_restante": r[3]} for r in rows]
 
 # Endpoint WebSocket
 @app.websocket("/ws")

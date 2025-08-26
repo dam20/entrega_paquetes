@@ -1,5 +1,5 @@
 import sys
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QMessageBox
 from PyQt5.QtCore import pyqtSlot, Qt
 import threading
 import requests
@@ -18,6 +18,7 @@ class EntregaApp(BaseApp):
         pieza = data.get("pieza")
         guarda = data.get("guarda")
         estado = data.get("estado", "Pedido al Deposito")
+        poste_restante = data.get("poste_restante", False)
         
         if not pieza or not guarda:
             print(f"⚠️ Datos incompletos en pedido: {data}")
@@ -29,7 +30,7 @@ class EntregaApp(BaseApp):
         if pieza not in self.pedidos or self.pedidos[pieza]["estado"] != estado:
             self.pedidos[pieza] = {
                 "estado": estado,
-                "datos": {"pieza": pieza, "guarda": guarda}
+                "datos": {"pieza": pieza, "guarda": guarda, "poste_restante": poste_restante}
             }
             self.actualizar_ui_inteligentemente()
 
@@ -126,6 +127,7 @@ class EntregaApp(BaseApp):
         # Manejar clic simple para copiar al portapapeles
         if self._is_single_click(event):
             self._copy_to_clipboard(pieza)
+            self._mostrar_mensaje_poste_restante(pieza)
             return
 
         # Manejar doble clic para marcar como entregado
@@ -155,7 +157,13 @@ class EntregaApp(BaseApp):
         """Copia el número de pieza al portapapeles"""
         QApplication.clipboard().setText(pieza)
         print(f"📋 Número de pieza {pieza} copiado al portapapeles")
-
+    
+    def _mostrar_mensaje_poste_restante(self, pieza: str) -> None:
+        """Muestra un mensaje si el pedido es Poste Restante"""
+        datos = self.pedidos.get(pieza, {}).get("datos", {})
+        if datos.get("poste_restante", False):  # Solo si es True
+            QMessageBox.information(None,"Poste Restante","No se olvide de cobrar el poste restante.")
+    
     def _mark_as_delivered(self, pieza: str) -> None:
         """Marca el pedido como entregado al cliente"""
         nuevo_estado = "Entregado al Cliente"
@@ -203,11 +211,12 @@ class EntregaApp(BaseApp):
                 pieza = pedido.get("pieza")
                 guarda = pedido.get("guarda")
                 estado = pedido.get("estado")
+                poste_restante = pedido.get("poste_restante", False)
                 
                 if pieza and guarda and estado:
                     self.pedidos[pieza] = {
                         "estado": estado,
-                        "datos": {"pieza": pieza, "guarda": guarda}
+                        "datos": {"pieza": pieza, "guarda": guarda, "poste_restante": poste_restante}
                     }
                 else:
                     print(f"⚠️ Pedido con datos incompletos: {pedido}")

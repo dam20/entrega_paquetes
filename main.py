@@ -30,7 +30,7 @@ class SectorSelector(QWidget):
         # Título principal
         title = QLabel("Sistema de Gestión de Pedidos")
         title_font = QFont()
-        title_font.setPointSize(16)
+        title_font.setPointSize(15)
         title_font.setBold(True)
         title.setFont(title_font)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
